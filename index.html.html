@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Línea de Tiempo de la Escritura - Vista desde Nave Espacial</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script> 
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script> 
+<link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+body { 
+  margin:0; 
+  overflow:hidden; 
+  background:#000; 
+  font-family:'Montserrat', sans-serif; 
+  color: #fff;
+}
+#scene-container { 
+  width:100vw; 
+  height:100vh; 
+}
+
+/* Estilos de las etiquetas de los nodos (títulos) */
+.node-label {
+    position: absolute;
+    color: #00FFFF; 
+    background: rgba(0, 0, 0, 0.6); 
+    padding: 8px 15px; 
+    border-radius: 8px; 
+    font-family: 'Dancing Script', cursive; 
+    font-size: 24px; 
+    font-weight: 700; 
+    pointer-events: none; 
+    white-space: nowrap;
+    transform: translate(-50%, -120%); 
+    border: 1px solid rgba(0, 255, 255, 0.4); 
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.3); 
+}
+
+/* Panel de Información 2D */
+#info-panel {
+  position:absolute; top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  width:380px; 
+  background: linear-gradient(145deg, rgba(0,0,15,0.98) 0%, rgba(0,10,20,0.98) 100%); 
+  border:2px solid #00FFFF;
+  box-shadow: 0 0 30px #00FFFF; 
+  border-radius:15px; 
+  padding:25px; 
+  color:#e0f7fa; 
+  display:none;
+  z-index:10;
+  text-align:center;
+  backdrop-filter: blur(8px); 
+  transition: opacity 0.3s ease-in-out;
+}
+#info-panel img { 
+  width:100%; 
+  max-height: 220px; 
+  object-fit: cover;
+  border-radius:8px; 
+  margin-bottom:20px; 
+  border: 2px solid #33FFFF; 
+  box-shadow: 0 0 15px rgba(51, 255, 255, 0.5); 
+}
+#info-panel h2 { 
+  margin:0 0 10px 0; 
+  color:#00FFFF; 
+  font-size: 1.8em; 
+  text-shadow: 0 0 8px #00FFFF;
+  font-family: 'Dancing Script', cursive; 
+}
+#info-panel p { 
+  margin:12px 0; 
+  text-align:justify; 
+  font-size:1.05em; 
+  line-height: 1.6; 
+}
+#info-panel button { 
+  margin-top:20px; 
+  padding:10px 20px; 
+  background: linear-gradient(45deg, #00FFFF, #33FFFF); 
+  color:#000; 
+  border:none; 
+  cursor:pointer; 
+  border-radius:6px; 
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.4);
+  transition: all 0.3s ease;
+}
+#info-panel button:hover {
+  background: linear-gradient(45deg, #33FFFF, #00FFFF);
+  box-shadow: 0 0 15px rgba(51, 255, 255, 0.6);
+  transform: translateY(-2px);
+}
+</style>
+</head>
+<body>
+<div id="scene-container"></div>
+<div id="label-container"></div> 
+<div id="info-panel">
+  <img id="event-image" src="" alt="Imagen Evento">
+  <h2 id="event-title"></h2>
+  <p id="event-date"></p>
+  <p id="event-description"></p>
+  <button id="close-btn">Cerrar</button>
+</div>
+
+<script>
+// --- Datos de la línea de tiempo ---
+const timelineData = [
+  { name: "Cuneiforme", date: "3500 a.C.", description: "La escritura cuneiforme se desarrolló en Mesopotamia, utilizando marcas en forma de cuña sobre tablillas de arcilla.", icon: "cune.jpg", positionZ: 0, symbol: "C" },
+  { name: "Alfabeto Fenicio", date: "1500 a.C.", description: "El alfabeto fenicio es uno de los primeros alfabetos fonéticos y sirvió de base fundamental para los alfabetos griego y latino.", icon: "feni.jpg", positionZ: 30, symbol: "F" },
+  { name: "Alfabeto Griego", date: "750 a.C.", description: "El alfabeto griego adaptó el fenicio, introduciendo las vocales, y fue crucial para la literatura, la ciencia y la filosofía occidentales.", icon: "griego.jpg", positionZ: 60, symbol: "G" },
+  { name: "Alfabeto Etrusco", date: "700 a.C.", description: "El alfabeto etrusco, usado en la península itálica, fue un puente clave entre el alfabeto griego y el eventual desarrollo del alfabeto latino.", icon: "estructo.jpg", positionZ: 90, symbol: "E" },
+  { name: "Alfabeto Latino", date: "600 a.C.", description: "El alfabeto latino se expandió con el Imperio Romano, convirtiéndose en el sistema de escritura dominante en Europa.", icon: "latino.jpg", positionZ: 120, symbol: "L" },
+  { name: "Escritura Digital", date: "Siglo XX", description: "La escritura digital, basada en sistemas binarios y Unicode, ha revolucionado la comunicación y el almacenamiento de información en la era moderna.", icon: "digital.jpg", positionZ: 150, symbol: "D" }
+];
+
+// --- Configuración Three.js ---
+const container = document.getElementById('scene-container');
+const labelContainer = document.getElementById('label-container');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x02020a); 
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000); 
+// Perspectiva de la Nave Espacial: Posición inicial
+camera.position.set(0, 10, -20); 
+camera.lookAt(0, 0, 75); 
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+container.appendChild(renderer.domElement);
+
+const labelRenderer = new THREE.CSS2DRenderer();
+labelRenderer.setSize(window.innerWidth, window.innerHeight);
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.top = '0px';
+labelContainer.appendChild(labelRenderer.domElement);
+
+const clock = new THREE.Clock();
+const controls = new THREE.OrbitControls(camera, labelRenderer.domElement);
+controls.enableDamping = true; 
+controls.dampingFactor = 0.07; 
+controls.screenSpacePanning = false;
+controls.minDistance = 10; 
+controls.maxDistance = 300; 
+controls.maxPolarAngle = Math.PI / 2.2; 
+controls.target.set(0,0,75); 
+controls.update();
+
+const timelineNodes = [];
+const nodeLabels = [];
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let intersectedNode = null;
+const originalNodeColor = 0x000000; 
+const hoverEmissiveColor = 0x88FFFF; 
+const baseEmissiveColor = 0x00FFFF;
+
+const shootingStars = [];
+
+
+// ====================================================================
+// NUEVO: ESTRUCTURA DE LA NAVE ESPACIAL (CABINA/VENTANA)
+// ====================================================================
+
+function createShipCockpit() {
+    // Geometría y Material base
+    const structureMat = new THREE.MeshStandardMaterial({
+        color: 0x111111,       // Gris oscuro casi negro
+        metalness: 0.9,       // Muy metálico
+        roughness: 0.1,       // Muy pulido
+        emissive: 0x00FFFF,   // Emisión cian sutil
+        emissiveIntensity: 0.05
+    });
+
+    // ALA 1 (Izquierda)
+    const wingGeom1 = new THREE.BoxGeometry(0.5, 20, 10);
+    const wing1 = new THREE.Mesh(wingGeom1, structureMat);
+    wing1.position.set(-15, 0, -20); // Posicionada a la izquierda de la cámara
+    wing1.rotation.z = Math.PI / 2; // Gira para simular el marco lateral de la ventana
+    camera.add(wing1); // Adjuntar a la cámara para que se mueva con ella
+
+    // ALA 2 (Derecha)
+    const wingGeom2 = new THREE.BoxGeometry(0.5, 20, 10);
+    const wing2 = new THREE.Mesh(wingGeom2, structureMat);
+    wing2.position.set(15, 0, -20); // Posicionada a la derecha de la cámara
+    wing2.rotation.z = Math.PI / 2;
+    camera.add(wing2);
+
+    // VIGA (Abajo)
+    const beamGeom = new THREE.BoxGeometry(30, 0.5, 10);
+    const beam = new THREE.Mesh(beamGeom, structureMat);
+    beam.position.set(0, -10, -20); // Posicionada debajo de la cámara
+    camera.add(beam);
+
+    // Panel de control (Pequeña luz en la parte inferior)
+    const panelLightGeom = new THREE.BoxGeometry(5, 0.1, 1);
+    const panelLightMat = new THREE.MeshBasicMaterial({ color: 0x00FF88 }); // Luz verde neón
+    const panelLight = new THREE.Mesh(panelLightGeom, panelLightMat);
+    panelLight.position.set(0, -9.5, -10);
+    camera.add(panelLight); 
+    
+    // NOTA: Al adjuntar los objetos a la cámara, se mueven con ella, manteniendo la perspectiva de cabina.
+}
+
+// ====================================================================
+
+
+// --- Sistema Solar ---
+const solarSystem = new THREE.Group();
+// Ajustamos la posición para que el Sistema Solar sea el enfoque inicial fuera de la línea de tiempo
+solarSystem.position.set(100, 50, -150); 
+solarSystem.rotation.x = Math.PI / 8; 
+scene.add(solarSystem);
+
+// Datos de planetas (Mantenidos)
+const planetsData = [
+    { name: 'Sol', size: 30, distance: 0, color: 0xFFDD00, speed: 0.005 }, 
+    { name: 'Mercurio', size: 2, distance: 60, color: 0x888888, speed: 0.05, roughness: 0.8 },
+    { name: 'Venus', size: 3.5, distance: 90, color: 0xFFBB00, speed: 0.04, roughness: 0.6 },
+    { name: 'Tierra', size: 4, distance: 130, color: 0x0088FF, speed: 0.03, roughness: 0.4, moon: { size: 1, distance: 8, color: 0xAAAAAA, speed: 0.1 } },
+    { name: 'Marte', size: 2.5, distance: 180, color: 0xFF4400, speed: 0.025, roughness: 0.7 },
+    { name: 'Júpiter', size: 15, distance: 300, color: 0xCCAA88, speed: 0.015, roughness: 0.5 },
+    { name: 'Saturno', size: 12, distance: 400, color: 0xEECC99, speed: 0.01, roughness: 0.6, ring: { inner: 14, outer: 22, color: 0x777777 } },
+];
+
+function createSolarSystem(){
+    const sunGeom = new THREE.SphereGeometry(planetsData[0].size, 64, 64);
+    const sunMat = new THREE.MeshStandardMaterial({
+        emissive: 0xFF8800, 
+        emissiveIntensity: 2, 
+        color: 0xFFEEAA, 
+        roughness: 1, 
+        metalness: 0,
+    });
+    const sun = new THREE.Mesh(sunGeom, sunMat);
+    sun.name = 'Sun';
+    solarSystem.add(sun);
+
+    const sunLight = new THREE.PointLight(0xFFCC00, 5, 1500);
+    sunLight.name = 'SunLight';
+    solarSystem.add(sunLight);
+
+    planetsData.slice(1).forEach(p => { 
+        const orbitPivot = new THREE.Object3D();
+        orbitPivot.name = `OrbitPivot_${p.name}`;
+        solarSystem.add(orbitPivot);
+
+        const planetGeom = new THREE.SphereGeometry(p.size, 32, 32);
+        const planetMat = new THREE.MeshStandardMaterial({ 
+            color: p.color, 
+            roughness: p.roughness || 0.7, 
+            metalness: 0.1, 
+            emissive: p.emissive || 0x000000, 
+            emissiveIntensity: p.emissiveIntensity || 0,
+        });
+        const planet = new THREE.Mesh(planetGeom, planetMat);
+        planet.position.x = p.distance;
+        planet.name = p.name;
+        planet.userData.speed = p.speed;
+        
+        orbitPivot.add(planet);
+
+        if (p.ring) {
+            const ringGeom = new THREE.RingGeometry(p.ring.inner, p.ring.outer, 64);
+            const ringMat = new THREE.MeshStandardMaterial({ 
+                color: p.ring.color, 
+                side: THREE.DoubleSide, 
+                roughness: 0.8, 
+                metalness: 0.1,
+                transparent: true,
+                opacity: 0.7
+            });
+            const ring = new THREE.Mesh(ringGeom, ringMat);
+            ring.rotation.x = Math.PI / 2; 
+            planet.add(ring);
+        }
+
+        if (p.moon) {
+            const moonPivot = new THREE.Object3D();
+            planet.add(moonPivot);
+
+            const moonGeom = new THREE.SphereGeometry(p.moon.size, 16, 16);
+            const moonMat = new THREE.MeshStandardMaterial({ 
+                color: p.moon.color,
+                roughness: 0.8,
+                metalness: 0.1
+            });
+            const moon = new THREE.Mesh(moonGeom, moonMat);
+            moon.position.x = p.moon.distance;
+            moon.name = 'Moon';
+            moon.userData.speed = p.moon.speed;
+            
+            moonPivot.add(moon);
+            planet.userData.moonPivot = moonPivot;
+        }
+    });
+}
+
+function updateSolarSystem(delta) {
+    const sun = solarSystem.getObjectByName('Sun');
+    if (sun) sun.rotation.y += delta * 0.01; 
+
+    planetsData.slice(1).forEach(p => {
+        const orbitPivot = solarSystem.getObjectByName(`OrbitPivot_${p.name}`);
+        const planet = orbitPivot.getObjectByName(p.name);
+        
+        if (orbitPivot) {
+            orbitPivot.rotation.y += delta * p.speed;
+        }
+
+        if (planet) {
+            planet.rotation.y += delta * 0.2; 
+            if (planet.userData.moonPivot) {
+                planet.userData.moonPivot.rotation.y += delta * planet.userData.moonPivot.children[0].userData.speed;
+            }
+        }
+    });
+}
+// --- Fin Sistema Solar ---
+
+
+// Partículas de fondo (Nebulosa) - Mantenido
+function createParticles(){
+  const geom = new THREE.BufferGeometry();
+  const pos=[];
+  const colors = [];
+  for(let i=0;i<8000;i++){ 
+    pos.push((Math.random()-0.5)*1200, (Math.random()-0.5)*1200, (Math.random()-0.5)*1200); 
+    const color = new THREE.Color();
+    color.setHSL(Math.random() * 0.1 + 0.5, 0.8, Math.random() * 0.5 + 0.5); 
+    colors.push(color.r, color.g, color.b);
+  }
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); 
+  
+  scene.add(new THREE.Points(geom, new THREE.PointsMaterial({
+    size: 0.4, 
+    transparent: true, 
+    opacity: 0.6,
+    vertexColors: true, 
+    blending: THREE.AdditiveBlending 
+  })));
+}
+
+// Estrellas fugaces (Mantenido)
+function createShootingStar(){
+    const length = 50; 
+    const points = [];
+    points.push(new THREE.Vector3(0, 0, 0));
+    points.push(new THREE.Vector3(0, 0, -length)); 
+    const geom = new THREE.BufferGeometry().setFromPoints(points);
+    
+    const material = new THREE.LineBasicMaterial({
+        color: 0xFFFFFF,
+        linewidth: 2,
+        blending: THREE.AdditiveBlending,
+        transparent: true,
+        opacity: 0.8
+    });
+    
+    const star = new THREE.Line(geom, material);
+    const boundary = 400;
+    star.position.set(
+        (Math.random() - 0.5) * 600, 
+        (Math.random() - 0.5) * 600, 
+        (Math.random() - 0.5) * 600
+    );
+    star.rotation.z = Math.random() * Math.PI * 2;
+    star.rotation.y = Math.random() * Math.PI * 2;
+    
+    star.userData = { 
+        velocity: new THREE.Vector3(-1 - Math.random() * 2, -1 - Math.random() * 2, -1 - Math.random() * 2).normalize().multiplyScalar(Math.random() * 5 + 3),
+        life: 0 
+    };
+    scene.add(star);
+    shootingStars.push(star);
+}
+
+function updateShootingStars(delta){
+    const boundary = 400; 
+    for(let i = shootingStars.length - 1; i >= 0; i--){
+        const star = shootingStars[i];
+        star.position.addScaledVector(star.userData.velocity, delta);
+        star.userData.life += delta;
+
+        if (star.userData.life > 1) { 
+            star.material.opacity -= delta * 2; 
+        }
+
+        if (star.position.x > boundary || star.position.x < -boundary ||
+            star.position.y > boundary || star.position.y < -boundary ||
+            star.position.z > boundary || star.position.z < -boundary ||
+            star.material.opacity <= 0) {
+            
+            scene.remove(star);
+            shootingStars.splice(i, 1);
+            
+            if (Math.random() < 0.3) { 
+                createShootingStar();
+            }
+        }
+    }
+}
+
+
+// Creador de texturas de símbolo y Timeline (Mantenidos)
+function createSymbolTexture(symbol) {
+    const size = 256; 
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const context = canvas.getContext('2d');
+    context.fillStyle = 'rgba(0,0,0,0.8)'; 
+    context.fillRect(0, 0, size, size);
+    context.font = 'bold 150px "Montserrat"'; 
+    context.fillStyle = '#00FFFF'; 
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.shadowColor = '#00FFFF'; 
+    context.shadowBlur = 15; 
+    context.fillText(symbol, size / 2, size / 2 + 10); 
+    return new THREE.CanvasTexture(canvas);
+}
+
+function createTimeline(){
+  const axisGeom = new THREE.CylinderGeometry(0.5, 0.5, 180, 64); 
+  const axisMat = new THREE.MeshStandardMaterial({
+    color: 0x00001a, 
+    emissive: 0x00FFFF, 
+    emissiveIntensity: 0.1, 
+    metalness: 0.3, 
+    roughness: 0.5,
+    transparent: true,
+    opacity: 0.15 
+  });
+  const axis = new THREE.Mesh(axisGeom, axisMat);
+  axis.rotation.x = Math.PI/2; 
+  axis.position.z = 75; 
+  axis.name = 'TimelineAxis';
+  scene.add(axis);
+
+  const lineMat = new THREE.LineBasicMaterial({color: 0x00FFFF, linewidth: 3}); 
+  const points = timelineData.map(ev => new THREE.Vector3(0, 0, ev.positionZ));
+  scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), lineMat));
+
+  timelineData.forEach(ev => {
+    const geom = new THREE.SphereGeometry(3.5, 32, 32); 
+    const texture = createSymbolTexture(ev.symbol);
+
+    const mat = new THREE.MeshPhongMaterial({
+      color: originalNodeColor, 
+      emissive: baseEmissiveColor, 
+      emissiveIntensity: 1.0, 
+      metalness: 0.3, 
+      roughness: 0.2,
+      transparent: true, 
+      opacity: 0.85,
+      map: texture, 
+      specular: 0x00FFFF, 
+      shininess: 100 
+    });
+    
+    const node = new THREE.Mesh(geom, mat);
+    node.position.set(0, 0, ev.positionZ);
+    node.userData = { 
+        ...ev, 
+        originalScale: 1, 
+        originalIntensity: 1.0, 
+        originalEmissive: baseEmissiveColor,
+        floatingOffset: 0, 
+        originalZ: ev.positionZ,
+        hoverDisplacement: 0 
+    };
+    scene.add(node);
+    timelineNodes.push(node);
+
+    const labelDiv = document.createElement('div');
+    labelDiv.className = 'node-label';
+    labelDiv.textContent = ev.name;
+    const label = new THREE.CSS2DObject(labelDiv);
+    label.position.set(0, 6, ev.positionZ); 
+    scene.add(label);
+    nodeLabels.push(label);
+  });
+}
+
+// Iluminación (Mantenida)
+scene.add(new THREE.AmbientLight(0x001122, 0.2)); 
+const pointLight = new THREE.PointLight(0x00FFFF, 0.3, 150); 
+pointLight.position.set(20, 30, -30); 
+scene.add(pointLight);
+
+
+// Eventos (Mantenidos)
+const infoPanel = document.getElementById('info-panel');
+const eventTitle = document.getElementById('event-title');
+const eventDate = document.getElementById('event-date');
+const eventDesc = document.getElementById('event-description');
+const eventImg = document.getElementById('event-image');
+const closeBtn = document.getElementById('close-btn');
+
+function onNodeClick(event){
+  if(event.button !== 0) return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObjects(timelineNodes);
+  if(intersects.length > 0){
+    const data = intersects[0].object.userData;
+    eventTitle.textContent = data.name;
+    eventDate.textContent = data.date;
+    eventDesc.textContent = data.description;
+    eventImg.src = data.icon; 
+    infoPanel.style.display = 'block';
+    controls.enabled = false;
+  }
+}
+
+function onMouseMove(event) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObjects(timelineNodes);
+
+  if(intersects.length > 0) {
+    if(intersectedNode !== intersects[0].object) {
+      if(intersectedNode) {
+        intersectedNode.scale.set(intersectedNode.userData.originalScale, intersectedNode.userData.originalScale, intersectedNode.userData.originalScale);
+        intersectedNode.material.emissive.setHex(intersectedNode.userData.originalEmissive);
+        intersectedNode.material.emissiveIntensity = intersectedNode.userData.originalIntensity;
+        intersectedNode.userData.hoverDisplacement = 0; 
+      }
+      
+      intersectedNode = intersects[0].object;
+      intersectedNode.userData.originalScale = intersectedNode.scale.x;
+      intersectedNode.userData.originalIntensity = intersectedNode.material.emissiveIntensity;
+      intersectedNode.userData.originalEmissive = intersectedNode.material.emissive.getHex();
+
+      intersectedNode.material.emissive.setHex(hoverEmissiveColor); 
+      intersectedNode.material.emissiveIntensity = 2.5; 
+      intersectedNode.userData.hoverDisplacement = 5; 
+      document.body.style.cursor = 'pointer';
+    }
+  } else {
+    if(intersectedNode) {
+      intersectedNode.scale.set(intersectedNode.userData.originalScale, intersectedNode.userData.originalScale, intersectedNode.userData.originalScale);
+      intersectedNode.material.emissive.setHex(intersectedNode.userData.originalEmissive);
+      intersectedNode.material.emissiveIntensity = intersectedNode.userData.originalIntensity;
+      intersectedNode.userData.hoverDisplacement = 0; 
+    }
+    intersectedNode = null;
+    document.body.style.cursor = 'default';
+  }
+}
+
+function hideInfoPanel(){ 
+  infoPanel.style.display = 'none'; 
+  controls.enabled = true; 
+}
+
+window.addEventListener('click', onNodeClick, false);
+window.addEventListener('mousemove', onMouseMove, false);
+closeBtn.addEventListener('click', hideInfoPanel, false);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight; 
+  camera.updateProjectionMatrix(); 
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  labelRenderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Inicializar escena
+createParticles();
+createTimeline();
+createSolarSystem(); 
+createShipCockpit(); // **LLAMADA NUEVA: Crea el marco de la nave**
+
+// Animación
+function animate(){
+  requestAnimationFrame(animate);
+  const delta = clock.getDelta();
+  
+  controls.update();
+  updateShootingStars(delta); 
+  updateSolarSystem(delta); 
+
+  const time = clock.getElapsedTime();
+  const axis = scene.getObjectByName('TimelineAxis');
+  if(axis) {
+      axis.rotation.z += 0.0005; 
+      axis.rotation.y += 0.0002; 
+  }
+
+  timelineNodes.forEach((n, i) => {
+    const floatingOffset = Math.sin(time * 0.4 + i * 0.5) * 2; 
+
+    const targetX = n.userData.hoverDisplacement;
+    n.position.x += (targetX - n.position.x) * 0.1; 
+
+    n.position.y = floatingOffset; 
+
+    if (n === intersectedNode) {
+        const pulseScale = 1 + Math.sin(time * 6) * 0.05; 
+        n.scale.set(pulseScale, pulseScale, pulseScale);
+        n.material.emissiveIntensity = 2.5 + Math.sin(time * 8) * 0.8; 
+    }
+  });
+
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera); 
+}
+animate();
+</script>
+</body>
+</html>
